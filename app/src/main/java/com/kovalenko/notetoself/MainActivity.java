@@ -3,6 +3,12 @@ package com.kovalenko.notetoself;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.res.AssetFileDescriptor;
+import android.content.res.AssetManager;
+import android.media.AudioAttributes;
+import android.media.AudioManager;
+import android.media.SoundPool;
+import android.os.Build;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
@@ -20,6 +26,7 @@ import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.TextView;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -29,21 +36,71 @@ public class MainActivity extends AppCompatActivity {
     private boolean mSound;
     private int mAnimOption;
     private SharedPreferences mPrefs;
+
     Animation mAnimFlash;
     Animation mFadeIn;
+
+    int mIdBeep = -1;
+    SoundPool mSp;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            AudioAttributes audioAttributes = new AudioAttributes
+                    .Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build();
+
+            mSp = new SoundPool
+                    .Builder()
+                    .setMaxStreams(5)
+                    .setAudioAttributes(audioAttributes)
+                    .build();
+        } else {
+            mSp = new SoundPool(5, AudioManager.STREAM_MUSIC, 0);
+        }
+
+        try {
+            AssetManager assetManager = this.getAssets();
+            AssetFileDescriptor descriptor;
+
+            descriptor = assetManager.openFd("beep.ogg");
+            mIdBeep = mSp.load(descriptor, 0);
+        } catch (IOException e) {
+            Log.e("error", "failed to load sound files");
+        }
+
         mNoteAdapter = new NoteAdapter();
         ListView listNote = (ListView) findViewById(R.id.listView);
         listNote.setAdapter(mNoteAdapter);
 
+        listNote.setLongClickable(true);
+
+        listNote.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
+            @Override
+            public boolean onItemLongClick(AdapterView<?> adapterView, View view, int i, long l) {
+                Bundle bundle = new Bundle();
+                bundle.putInt("index", i);
+                DialogDeleteNote dialog = new DialogDeleteNote();
+                dialog.setArguments(bundle);
+                dialog.show(getFragmentManager(), "666");
+
+                return true;
+            }
+        });
+
         listNote.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> adapterView, View view, int i, long l) {
+
+                if(mSound) {
+                    mSp.play(mIdBeep, 1, 1, 0, 0, 1);
+                }
+
                 Note tempNote = mNoteAdapter.getItem(i);
                 DialogShowNote dialog = new DialogShowNote();
                 dialog.sendNoteSelected(tempNote);
@@ -85,6 +142,10 @@ public class MainActivity extends AppCompatActivity {
 
     public void createNewNote(Note n) {
         mNoteAdapter.addNote(n);
+    }
+
+    public void deleteNote(int i) {
+        mNoteAdapter.deleteNote(i);
     }
 
     @Override
@@ -138,6 +199,13 @@ public class MainActivity extends AppCompatActivity {
             }catch(Exception e){
                 Log.e("Error Saving Notes","", e);
             }
+        }
+
+        public void deleteNote(int n){
+
+            noteList.remove(n);
+            notifyDataSetChanged();
+
         }
 
         @Override
